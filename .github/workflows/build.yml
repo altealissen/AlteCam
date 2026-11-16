@@ -19,6 +19,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Unpack ZIP and locate project
+        run: |
+          set -e
+          ZIP=$(find . -maxdepth 3 -iname '*.zip' -not -path './.git/*' -printf '%T@ %p\n' | sort -nr | head -n1 | cut -d' ' -f2-)
+          if [ -n "$ZIP" ]; then
+            echo "Using ZIP: $ZIP"
+            ROOT="$RUNNER_TEMP/proj"
+            rm -rf "$ROOT"; mkdir -p "$ROOT"
+            unzip -q "$ZIP" -d "$ROOT"
+          else
+            echo "No ZIP found, using repository root"
+            ROOT="."
+          fi
+          S=$(find "$ROOT" -maxdepth 4 \( -name settings.gradle.kts -o -name settings.gradle \) -not -path '*/__MACOSX/*' | awk '{print length, $0}' | sort -n | head -n1 | cut -d' ' -f2-)
+          if [ -z "$S" ]; then
+            echo "ERROR: settings.gradle(.kts) not found. Project layout:"
+            find "$ROOT" -maxdepth 3 -not -path '*/.git/*' | head -50
+            exit 1
+          fi
+          PROJECT_DIR=$(cd "$(dirname "$S")" && pwd)
+          echo "Project dir: $PROJECT_DIR"
+          ls -la "$PROJECT_DIR"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -33,21 +57,27 @@ jobs:
           gradle-version: '8.9'
 
       - name: Build debug APK
-        run: gradle :app:assembleDebug --no-daemon --stacktrace
+        run: |
+          cd "$PROJECT_DIR"
+          gradle :app:assembleDebug --no-daemon --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: AlteCam-debug-apk-${{ github.run_number }}
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
       - name: Unit tests (engine)
         continue-on-error: true
-        run: gradle :app:testDebugUnitTest --no-daemon --stacktrace
+        run: |
+          cd "$PROJECT_DIR"
+          gradle :app:testDebugUnitTest --no-daemon --stacktrace
 
       - name: Upload test report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: unit-test-report-
+          name: unit-test-report-${{ github.run_number }}
+          path: ${{ env.PROJECT_DIR }}/app/build/reports/tests/testDebugUnitTest
+          if-no-files-found: ignore
