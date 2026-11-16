@@ -24,13 +24,14 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - uses: android-actions/setup-android@v3
+      - name: Accept Android SDK licenses (preinstalled SDK)
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
 
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
 
-      # APK first: it must be produced even if a numeric unit test is flaky.
       - name: Build debug APK
         run: gradle :app:assembleDebug --no-daemon --stacktrace
 
@@ -49,6 +50,4 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: unit-test-report-${{ github.run_number }}
-          path: app/build/reports/tests/testDebugUnitTest
-          if-no-files-found: ignore
+          name: unit-test-report-
